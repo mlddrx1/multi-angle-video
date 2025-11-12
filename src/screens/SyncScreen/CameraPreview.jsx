@@ -1,13 +1,13 @@
-function CameraPreview() {
+import React from 'react';
+import VideoGrid from '../../components/VideoGrid'; // <- important path
+
+const CameraPreview = () => {
   return (
-    <div style={{ padding: '8px', border: '1px solid #ddd', borderRadius: 8 }}>
-      <div>
-        <strong>Camera Preview</strong>
-      </div>
-      <div style={{ fontSize: 12, opacity: 0.7 }}>
-        (Stub) This will display synced angles with matching timestamps.
-      </div>
-    </div>
+    <section className="panel">
+      <h2>Camera Preview</h2>
+      <VideoGrid />
+    </section>
   );
-}
+};
+
 export default CameraPreview;

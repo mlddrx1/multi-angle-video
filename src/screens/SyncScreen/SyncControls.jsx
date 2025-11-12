@@ -1,4 +1,9 @@
 // src/screens/SyncScreen/SyncControls.jsx
+import PropTypes from 'prop-types';
+SyncControls.propTypes = {
+  setSyncStatus: PropTypes.func.isRequired,
+};
+
 function SyncControls({ setSyncStatus }) {
   const onStartSync = () => {
     setSyncStatus('Syncing… 0%');

@@ -1,4 +1,5 @@
 // src/components/VideoGrid.js
+/* eslint-disable no-unreachable */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 
@@ -16,6 +17,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
   const [durations, setDurations] = useState([]); // seconds
   const [marks, setMarks] = useState([]); // user-selected sync marks (seconds or null)
   const [masterIndex, setMasterIndex] = useState(0); // which video is the reference
+  const [activeIndex, setActiveIndex] = useState(0); // which camera keyboard controls target
   const [status, setStatus] = useState('Idle');
   const [endPolicy, setEndPolicy] = useState('stopAllAtFirstEnd');
 
@@ -62,6 +64,9 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       v.pause();
       v.currentTime = 0;
     });
+
+    // 👇 clear all marks when resetting
+    setMarks(new Array(sources.length).fill(null));
     setStatus('Idle');
   };
 
@@ -167,6 +172,58 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
     return () => handlers.forEach(([v, h]) => v.removeEventListener('ended', h));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endPolicy, sources.length]);
+  // ---------- Keyboard shortcuts ----------
+  // Space: play/pause all
+  // 1/2/3: select active camera
+  // M: mark active camera
+  // ← / →: nudge active camera by -0.1s / +0.1s
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't interfere with typing in inputs/textareas (future-proofing)
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      // Space = toggle play/pause all
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const anyPlaying = videoRefs.current.some((v) => v && !v.paused);
+        if (anyPlaying) {
+          pauseAll();
+        } else {
+          playAll();
+        }
+        return;
+      }
+
+      // Number keys 1..9: select active camera
+      if (e.key >= '1' && e.key <= '9') {
+        const idx = Number(e.key) - 1;
+        if (idx < sources.length) {
+          setActiveIndex(idx);
+        }
+        return;
+      }
+
+      // M = mark active camera
+      if (e.key === 'm' || e.key === 'M') {
+        handleMark(activeIndex);
+        return;
+      }
+
+      // Arrow keys = nudge active camera
+      if (e.code === 'ArrowLeft') {
+        adjustTime(activeIndex, -0.1);
+        return;
+      }
+      if (e.code === 'ArrowRight') {
+        adjustTime(activeIndex, +0.1);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, sources.length]);
 
   // ---------- Helpers ----------
   const handleLoadedMetadata = (i) => {
@@ -181,15 +238,39 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
 
   const timeLabel = (sec) => (typeof sec === 'number' ? `${sec.toFixed(2)}s` : '—');
 
+  // how many videos currently have a mark
+  const marksCount = marks.filter((m) => typeof m === 'number').length;
+  const canSync = marksCount >= 2;
+
+  // offset of each camera’s mark relative to the master’s mark
+  const offsetLabel = (i) => {
+    if (marks[masterIndex] == null || marks[i] == null) return '—';
+    const diff = marks[i] - marks[masterIndex];
+    if (Math.abs(diff) < 0.0005) return '0.00s';
+    const sign = diff >= 0 ? '+' : '';
+    return `${sign}${diff.toFixed(2)}s`;
+  };
+
   // ---------- UI ----------
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* Top: Camera previews */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         {sources.map((src, i) => (
-          <div key={i} style={{ width: 360 }}>
+          <div
+            key={i}
+            style={{
+              width: 360,
+              padding: 4,
+              borderRadius: 10,
+              border: i === activeIndex ? '2px solid #0078d4' : '2px solid transparent',
+            }}
+            onClick={() => setActiveIndex(i)} // click to make this the active camera
+          >
             <div style={{ fontWeight: 600, marginBottom: 6 }}>
-              Camera {i + 1} {i === masterIndex ? ' • Master' : ''}
+              Camera {i + 1}
+              {i === masterIndex ? ' • Master' : ''}
+              {i === activeIndex ? ' • Active' : ''}
             </div>
 
             <video
@@ -226,7 +307,8 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
             {/* Live metadata row */}
             <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>
               Current: {timeLabel(videoRefs.current[i]?.currentTime)} · Duration:{' '}
-              {timeLabel(durations[i])} · Mark: {timeLabel(marks[i])}
+              {timeLabel(durations[i])} · Mark: {timeLabel(marks[i])} · Offset vs master:{' '}
+              {offsetLabel(i)}
               {/* Forces re-render of the label via nowTick */}
               <span style={{ display: 'none' }}>{nowTick}</span>
             </div>
@@ -239,7 +321,10 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
         <button onClick={playAll}>Play All</button>
         <button onClick={pauseAll}>Pause All</button>
         <button onClick={resetAll}>Reset</button>
-        <button onClick={startSync}>Start Sync</button>
+        <button onClick={startSync} disabled={!canSync}>
+          Start Sync
+        </button>
+
         <button
           onClick={() => {
             console.table(

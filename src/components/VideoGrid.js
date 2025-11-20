@@ -48,6 +48,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState('Idle');
   const [endPolicy, setEndPolicy] = useState('stopAllAtFirstEnd');
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // ==== SYNC STATE SAVE / RESTORE ADDITIONS ====
   const hasInitLoadedRef = useRef(false);
@@ -374,7 +375,12 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
           </select>
         </label>
 
+        <button type="button" onClick={() => setShowShortcuts((prev) => !prev)}>
+          {showShortcuts ? 'Hide Shortcuts' : 'Show Shortcuts'}
+        </button>
+
         {/* ==== SYNC STATE SAVE / CLEAR BUTTONS ==== */}
+
         <button
           style={{ marginLeft: 12 }}
           onClick={() => {
@@ -397,6 +403,38 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
           Clear Saved Sync
         </button>
       </div>
+      {showShortcuts && (
+        <div
+          style={{
+            background: '#f9f9f9',
+            border: '1px solid #ccc',
+            borderRadius: 8,
+            padding: '12px 16px',
+            marginTop: 8,
+            marginBottom: 8,
+            maxWidth: 380,
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Keyboard Shortcuts</div>
+          <div>
+            <strong>Space</strong> – Play / Pause All
+          </div>
+          <div>
+            <strong>1 / 2 / 3</strong> – Select active camera
+          </div>
+          <div>
+            <strong>M</strong> – Mark active camera
+          </div>
+          <div>
+            <strong>← / →</strong> – Nudge active camera (−0.1s / +0.1s)
+          </div>
+          <div style={{ marginTop: 4, fontStyle: 'italic' }}>
+            Shortcuts work when the page has focus (click anywhere on the page first).
+          </div>
+        </div>
+      )}
 
       <div style={{ fontSize: 13 }}>
         Status: <strong>{status}</strong> {syncTip && `· ${syncTip}`}{' '}

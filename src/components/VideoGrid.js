@@ -197,7 +197,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
   const startSync = () => {
     const have = marks.map((m) => typeof m === 'number');
     if (have.filter(Boolean).length < 2) {
-      setStatus('Need at least two marks to sync');
+      setStatus('Cannot sync yet – set marks on at least two cameras first.');
       return;
     }
 
@@ -212,7 +212,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       v.currentTime = target;
     });
 
-    setStatus('Synced');
+    setStatus('Synced. Use Play All to review the alignment.');
   };
 
   // ---------- End-of-clip ----------
@@ -251,6 +251,12 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
 
   const marksCount = marks.filter((m) => typeof m === 'number').length;
   const canSync = marksCount >= 2;
+  const syncTip =
+    marksCount === 0
+      ? 'Set a mark on at least two cameras to enable Start Sync.'
+      : marksCount === 1
+        ? 'Set one more mark on another camera to enable Start Sync.'
+        : '';
 
   const offsetLabel = (i) => {
     if (marks[masterIndex] == null || marks[i] == null) return '—';
@@ -349,7 +355,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
                 mark: marks[i] ?? null,
               }))
             );
-            setStatus('Timestamps logged to console');
+            setStatus('Timestamps logged to console (see DevTools → Console).');
           }}
         >
           Validate Timestamps
@@ -376,7 +382,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
             saveSyncStateToStorage(MANUAL_KEY, snap);
             saveSyncStateToStorage(AUTOSAVE_KEY, snap);
             setLastSavedAt(new Date());
-            setStatus('Sync state saved');
+            setStatus('Sync state saved. It will be restored on reload.');
           }}
         >
           Save Sync State
@@ -385,7 +391,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
         <button
           onClick={() => {
             clearSyncStateFromStorage();
-            setStatus('Saved sync cleared');
+            setStatus('Saved sync cleared. Reload to start from a blank state.');
           }}
         >
           Clear Saved Sync
@@ -393,11 +399,11 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       </div>
 
       <div style={{ fontSize: 13 }}>
-        Status: <strong>{status}</strong>{' '}
+        Status: <strong>{status}</strong> {syncTip && `· ${syncTip}`}{' '}
         {bestMasterIndex !== masterIndex
           ? `· (Auto-picked best master: Camera ${bestMasterIndex + 1})`
           : ''}
-        {lastSavedAt ? ` · Saved at ${lastSavedAt.toLocaleTimeString()}` : ''}
+        {lastSavedAt ? `· Saved at ${lastSavedAt.toLocaleTimeString()}` : ''}
       </div>
     </div>
   );

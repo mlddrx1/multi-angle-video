@@ -1,4 +1,3 @@
-// src/components/VideoGrid.js
 /* eslint-disable no-unreachable */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
@@ -9,47 +8,121 @@ import PropTypes from 'prop-types';
 
 const DEFAULT_SOURCES = ['/videos/sample01.mp4', '/videos/sample02.mp4', '/videos/sample03.mp4'];
 
+// ==== SYNC STATE SAVE / RESTORE ADDITIONS ====
+const AUTOSAVE_KEY = 'multiAngleSyncState_auto_v1';
+const MANUAL_KEY = 'multiAngleSyncState_saved_v1';
+
+function saveSyncStateToStorage(key, state) {
+  try {
+    localStorage.setItem(key, JSON.stringify(state));
+  } catch (err) {
+    console.error('Failed to save sync state', err);
+  }
+}
+
+function loadSyncStateFromStorage(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error('Failed to load sync state', err);
+    return null;
+  }
+}
+
+function clearSyncStateFromStorage() {
+  localStorage.removeItem(AUTOSAVE_KEY);
+  localStorage.removeItem(MANUAL_KEY);
+}
+// =================================================
+
 export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
   // Refs for the <video> DOM nodes
   const videoRefs = useRef([]);
 
-  // Per-video runtime data we want to show/modify in the UI
-  const [durations, setDurations] = useState([]); // seconds
-  const [marks, setMarks] = useState([]); // user-selected sync marks (seconds or null)
-  const [masterIndex, setMasterIndex] = useState(0); // which video is the reference
-  const [activeIndex, setActiveIndex] = useState(0); // which camera keyboard controls target
+  // Per-video runtime data
+  const [durations, setDurations] = useState([]);
+  const [marks, setMarks] = useState([]);
+  const [masterIndex, setMasterIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState('Idle');
   const [endPolicy, setEndPolicy] = useState('stopAllAtFirstEnd');
 
-  // Keep an updating timestamp display without spamming renders
+  // ==== SYNC STATE SAVE / RESTORE ADDITIONS ====
+  const hasInitLoadedRef = useRef(false);
+  const [lastSavedAt, setLastSavedAt] = useState(null);
+
+  function buildSyncState() {
+    return {
+      masterIndex,
+      endPolicy,
+      marks, // array of numbers | null
+    };
+  }
+
+  function applySyncState(sync) {
+    if (!sync) return;
+
+    if (typeof sync.masterIndex === 'number') {
+      setMasterIndex(sync.masterIndex);
+    }
+    if (typeof sync.endPolicy === 'string') {
+      setEndPolicy(sync.endPolicy);
+    }
+    if (Array.isArray(sync.marks)) {
+      setMarks(sync.marks);
+    }
+  }
+
+  // Load saved state ONCE when component mounts
+  useEffect(() => {
+    const manual = loadSyncStateFromStorage(MANUAL_KEY);
+    if (manual) {
+      applySyncState(manual);
+      hasInitLoadedRef.current = true;
+      return;
+    }
+
+    const auto = loadSyncStateFromStorage(AUTOSAVE_KEY);
+    if (auto) {
+      applySyncState(auto);
+    }
+
+    hasInitLoadedRef.current = true;
+  }, []);
+
+  // Autosave on changes
+  useEffect(() => {
+    if (!hasInitLoadedRef.current) return; // don't save initial blank state
+    const snapshot = buildSyncState();
+    saveSyncStateToStorage(AUTOSAVE_KEY, snapshot);
+  }, [marks, masterIndex, endPolicy]);
+  // =================================================
+
+  // Keep updating time stamp display
   const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
     let rafId;
-    let intId;
-
     const step = () => {
-      setNowTick((t) => (t + 1) % 1_000_000); // lightweight tick to trigger UI time labels
+      setNowTick((t) => (t + 1) % 1_000_000);
       rafId = requestAnimationFrame(step);
     };
-
-    // Prefer rAF for smoothness; fall back to interval if not available
-    if (typeof requestAnimationFrame === 'function') {
-      rafId = requestAnimationFrame(step);
-      return () => cancelAnimationFrame(rafId);
-    } else {
-      intId = setInterval(step, 250);
-      return () => clearInterval(intId);
-    }
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
   }, []);
 
   // Initialize arrays when sources change
   useEffect(() => {
     setDurations(new Array(sources.length).fill(0));
-    setMarks(new Array(sources.length).fill(null));
+    setMarks((prev) => {
+      const next = new Array(sources.length).fill(null);
+      return prev.length === sources.length ? prev : next;
+    });
     setMasterIndex((prev) => Math.min(prev, sources.length - 1) || 0);
   }, [sources, masterIndex]);
 
-  // ---------- Basic controls (Play/Pause/Reset) ----------
+  // ---------- Basic controls ----------
   const playAll = () => {
     videoRefs.current.forEach((v) => v && v.play());
   };
@@ -64,13 +137,10 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       v.pause();
       v.currentTime = 0;
     });
-
-    // 👇 clear all marks when resetting
     setMarks(new Array(sources.length).fill(null));
     setStatus('Idle');
   };
 
-  // ---------- Marking & Master ----------
   const setAsMaster = (i) => {
     setMasterIndex(i);
   };
@@ -85,33 +155,35 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
     });
   };
 
-  // Small nudge controls for manual fine-tuning
   const adjustTime = (i, delta) => {
     const v = videoRefs.current[i];
     if (!v) return;
     const next = Math.max(0, Math.min(v.duration || Infinity, v.currentTime + delta));
     v.currentTime = next;
+    setMarks((prev) => {
+      const updated = [...prev];
+      updated[i] = next;
+      return updated;
+    });
   };
 
   // ---------- Sync Logic ----------
-  // Compute best master by maximizing overlap window (if marks available for >=2 videos)
   const bestMasterIndex = useMemo(() => {
     const have = marks.map((m) => typeof m === 'number');
     const enoughMarks = have.filter(Boolean).length >= 2;
-    if (!enoughMarks) return masterIndex; // fall back to current selection
+    if (!enoughMarks) return masterIndex;
 
     let best = { idx: masterIndex, overlap: -Infinity };
 
     for (let r = 0; r < sources.length; r++) {
-      if (!have[r]) continue; // must have a mark to be a candidate master
+      if (!have[r]) continue;
       const deltas = marks.map((m) => (typeof m === 'number' ? m - marks[r] : null));
 
-      // Common global time window g such that for all i: 0 <= g + delta[i] <= duration[i]
       let startG = -Infinity;
       let endG = Infinity;
 
       for (let i = 0; i < deltas.length; i++) {
-        if (deltas[i] === null || !durations[i]) continue; // ignore videos without marks/duration
+        if (deltas[i] === null || !durations[i]) continue;
         startG = Math.max(startG, -deltas[i]);
         endG = Math.min(endG, durations[i] - deltas[i]);
       }
@@ -119,113 +191,52 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       const overlap = Math.max(0, endG - startG);
       if (overlap > best.overlap) best = { idx: r, overlap };
     }
-
     return best.idx;
   }, [marks, durations, sources.length, masterIndex]);
 
   const startSync = () => {
-    // Require at least the master + one other to have marks
     const have = marks.map((m) => typeof m === 'number');
     if (have.filter(Boolean).length < 2) {
       setStatus('Need at least two marks to sync');
       return;
     }
 
-    // Optionally auto-select best master
     const chosenMaster = bestMasterIndex;
     if (chosenMaster !== masterIndex) setMasterIndex(chosenMaster);
 
     const base = marks[chosenMaster];
 
-    // Align: for each video i, set currentTime so that mark[i] lines up with base
     videoRefs.current.forEach((v, i) => {
       if (!v || typeof marks[i] !== 'number') return;
       const target = Math.max(0, marks[i] - base);
-      v.currentTime = target; // this puts all marked events at the same global time
+      v.currentTime = target;
     });
 
     setStatus('Synced');
   };
 
-  // ---------- End-of-clip behavior ----------
+  // ---------- End-of-clip ----------
   useEffect(() => {
     const handlers = [];
-
     videoRefs.current.forEach((v) => {
       if (!v) return;
-
       const onEnded = () => {
-        if (endPolicy === 'stopAllAtFirstEnd') {
-          pauseAll();
-        } else if (endPolicy === 'freezeFinished') {
-          v.pause(); // hold last frame
-        } else if (endPolicy === 'loopFinished') {
+        if (endPolicy === 'stopAllAtFirstEnd') pauseAll();
+        else if (endPolicy === 'freezeFinished') v.pause();
+        else if (endPolicy === 'loopFinished') {
           v.currentTime = 0;
           v.play();
         }
       };
-
       v.addEventListener('ended', onEnded);
       handlers.push([v, onEnded]);
     });
-
     return () => handlers.forEach(([v, h]) => v.removeEventListener('ended', h));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endPolicy, sources.length]);
-  // ---------- Keyboard shortcuts ----------
-  // Space: play/pause all
-  // 1/2/3: select active camera
-  // M: mark active camera
-  // ← / →: nudge active camera by -0.1s / +0.1s
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Don't interfere with typing in inputs/textareas (future-proofing)
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-      // Space = toggle play/pause all
-      if (e.code === 'Space') {
-        e.preventDefault();
-        const anyPlaying = videoRefs.current.some((v) => v && !v.paused);
-        if (anyPlaying) {
-          pauseAll();
-        } else {
-          playAll();
-        }
-        return;
-      }
-
-      // Number keys 1..9: select active camera
-      if (e.key >= '1' && e.key <= '9') {
-        const idx = Number(e.key) - 1;
-        if (idx < sources.length) {
-          setActiveIndex(idx);
-        }
-        return;
-      }
-
-      // M = mark active camera
-      if (e.key === 'm' || e.key === 'M') {
-        handleMark(activeIndex);
-        return;
-      }
-
-      // Arrow keys = nudge active camera
-      if (e.code === 'ArrowLeft') {
-        adjustTime(activeIndex, -0.1);
-        return;
-      }
-      if (e.code === 'ArrowRight') {
-        adjustTime(activeIndex, +0.1);
-        return;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIndex, sources.length]);
-
-  // ---------- Helpers ----------
+  // ---------- UI ----------
+  // Helper to record duration once metadata is loaded
   const handleLoadedMetadata = (i) => {
     const v = videoRefs.current[i];
     if (!v) return;
@@ -238,23 +249,29 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
 
   const timeLabel = (sec) => (typeof sec === 'number' ? `${sec.toFixed(2)}s` : '—');
 
-  // how many videos currently have a mark
   const marksCount = marks.filter((m) => typeof m === 'number').length;
   const canSync = marksCount >= 2;
 
-  // offset of each camera’s mark relative to the master’s mark
   const offsetLabel = (i) => {
     if (marks[masterIndex] == null || marks[i] == null) return '—';
     const diff = marks[i] - marks[masterIndex];
-    if (Math.abs(diff) < 0.0005) return '0.00s';
     const sign = diff >= 0 ? '+' : '';
     return `${sign}${diff.toFixed(2)}s`;
   };
 
-  // ---------- UI ----------
+  const offsetColor = (i) => {
+    if (marks[masterIndex] == null || marks[i] == null) return '#555';
+    const diff = marks[i] - marks[masterIndex];
+    const abs = Math.abs(diff);
+    if (abs < 0.05) return '#16a34a';
+    if (diff > 0) return '#d97706';
+    if (diff < 0) return '#2563eb';
+    return '#555';
+  };
+
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      {/* Top: Camera previews */}
+      {/* Top video previews */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         {sources.map((src, i) => (
           <div
@@ -265,7 +282,7 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
               borderRadius: 10,
               border: i === activeIndex ? '2px solid #0078d4' : '2px solid transparent',
             }}
-            onClick={() => setActiveIndex(i)} // click to make this the active camera
+            onClick={() => setActiveIndex(i)}
           >
             <div style={{ fontWeight: 600, marginBottom: 6 }}>
               Camera {i + 1}
@@ -283,44 +300,41 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
                 boxShadow: '0 1px 4px rgba(0,0,0,0.15)',
                 width: '100%',
                 maxWidth: 360,
-                maxHeight: 220, // cap height so it fits on screen
-                objectFit: 'cover', // keeps it filled, crops a bit if needed
+                maxHeight: 220,
+                objectFit: 'cover',
               }}
             />
 
-            {/* Inline stats / quick tools */}
-            <div
-              style={{
-                display: 'flex',
-                gap: 8,
-                marginTop: 8,
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
+            {/* Inline controls */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
               <button onClick={() => setAsMaster(i)}>Set as Master</button>
               <button onClick={() => handleMark(i)}>Mark</button>
               <button onClick={() => adjustTime(i, -0.1)}>−0.1s</button>
               <button onClick={() => adjustTime(i, +0.1)}>+0.1s</button>
             </div>
 
-            {/* Live metadata row */}
-            <div style={{ fontSize: 12, opacity: 0.85, marginTop: 6 }}>
-              Current: {timeLabel(videoRefs.current[i]?.currentTime)} · Duration:{' '}
-              {timeLabel(durations[i])} · Mark: {timeLabel(marks[i])} · Offset vs master:{' '}
-              {offsetLabel(i)}
-              {/* Forces re-render of the label via nowTick */}
+            {/* Metadata */}
+            <div style={{ fontSize: 12, marginTop: 6 }}>
+              <div>
+                Current: {timeLabel(videoRefs.current[i]?.currentTime)} · Duration:{' '}
+                {timeLabel(durations[i])}
+              </div>
+              <div>
+                Mark: {timeLabel(marks[i])} ·{' '}
+                <span style={{ color: offsetColor(i) }}>Offset vs master: {offsetLabel(i)}</span>
+              </div>
               <span style={{ display: 'none' }}>{nowTick}</span>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Global controls */}
+      {/* Global Controls */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button onClick={playAll}>Play All</button>
         <button onClick={pauseAll}>Pause All</button>
         <button onClick={resetAll}>Reset</button>
+
         <button onClick={startSync} disabled={!canSync}>
           Start Sync
         </button>
@@ -353,6 +367,29 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
             <option value="loopFinished">Loop finished</option>
           </select>
         </label>
+
+        {/* ==== SYNC STATE SAVE / CLEAR BUTTONS ==== */}
+        <button
+          style={{ marginLeft: 12 }}
+          onClick={() => {
+            const snap = buildSyncState();
+            saveSyncStateToStorage(MANUAL_KEY, snap);
+            saveSyncStateToStorage(AUTOSAVE_KEY, snap);
+            setLastSavedAt(new Date());
+            setStatus('Sync state saved');
+          }}
+        >
+          Save Sync State
+        </button>
+
+        <button
+          onClick={() => {
+            clearSyncStateFromStorage();
+            setStatus('Saved sync cleared');
+          }}
+        >
+          Clear Saved Sync
+        </button>
       </div>
 
       <div style={{ fontSize: 13 }}>
@@ -360,12 +397,13 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
         {bestMasterIndex !== masterIndex
           ? `· (Auto-picked best master: Camera ${bestMasterIndex + 1})`
           : ''}
+        {lastSavedAt ? ` · Saved at ${lastSavedAt.toLocaleTimeString()}` : ''}
       </div>
     </div>
   );
 }
 
-// 👇 propTypes MUST be outside the component
+// PropTypes
 VideoGrid.propTypes = {
   sources: PropTypes.arrayOf(PropTypes.string),
 };

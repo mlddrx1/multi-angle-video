@@ -285,16 +285,57 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
             key={i}
             style={{
               width: 360,
-              padding: 4,
-              borderRadius: 10,
-              border: i === activeIndex ? '2px solid #0078d4' : '2px solid transparent',
+              padding: 8,
+              marginBottom: 8,
+              borderRadius: 12,
+              background: '#ffffff',
+              border: i === activeIndex ? '2px solid #2563eb' : '1px solid #e5e7eb',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
+              cursor: 'pointer',
             }}
             onClick={() => setActiveIndex(i)}
           >
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>
-              Camera {i + 1}
-              {i === masterIndex ? ' • Master' : ''}
-              {i === activeIndex ? ' • Active' : ''}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8,
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              <span>Camera {i + 1}</span>
+
+              {i === masterIndex && (
+                <span
+                  style={{
+                    background: '#2563eb',
+                    color: '#fff',
+                    padding: '2px 6px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                >
+                  Master
+                </span>
+              )}
+
+              {i === activeIndex && (
+                <span
+                  style={{
+                    background: '#10b981',
+                    color: '#fff',
+                    padding: '2px 6px',
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                >
+                  Active
+                </span>
+              )}
             </div>
 
             <video
@@ -337,16 +378,79 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       </div>
 
       {/* Global Controls */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button onClick={playAll}>Play All</button>
-        <button onClick={pauseAll}>Pause All</button>
-        <button onClick={resetAll}>Reset</button>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 8,
+          background: '#f8f9fa',
+          padding: '10px 12px',
+          borderRadius: 8,
+          border: '1px solid #e5e7eb',
+        }}
+      >
+        <button
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
+          onClick={playAll}
+        >
+          Play All
+        </button>
 
-        <button onClick={startSync} disabled={!canSync}>
+        <button
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
+          onClick={pauseAll}
+        >
+          Pause All
+        </button>
+
+        <button
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
+          onClick={resetAll}
+        >
+          Reset
+        </button>
+
+        <button
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: canSync ? '#fff' : '#f3f4f6',
+            cursor: canSync ? 'pointer' : 'not-allowed',
+            opacity: canSync ? 1 : 0.7,
+          }}
+          onClick={startSync}
+          disabled={!canSync}
+        >
           Start Sync
         </button>
 
         <button
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
           onClick={() => {
             console.table(
               videoRefs.current.map((v, i) => ({
@@ -362,12 +466,25 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
           Validate Timestamps
         </button>
 
-        <label style={{ marginLeft: 16 }}>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            marginLeft: 8,
+            fontSize: 13,
+          }}
+        >
           End policy:
           <select
             value={endPolicy}
             onChange={(e) => setEndPolicy(e.target.value)}
-            style={{ marginLeft: 8 }}
+            style={{
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: '1px solid #d1d5db',
+              background: '#fff',
+            }}
           >
             <option value="stopAllAtFirstEnd">Stop all at first end</option>
             <option value="freezeFinished">Freeze finished</option>
@@ -375,14 +492,17 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
           </select>
         </label>
 
-        <button type="button" onClick={() => setShowShortcuts((prev) => !prev)}>
-          {showShortcuts ? 'Hide Shortcuts' : 'Show Shortcuts'}
-        </button>
-
         {/* ==== SYNC STATE SAVE / CLEAR BUTTONS ==== */}
 
         <button
-          style={{ marginLeft: 12 }}
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+            marginLeft: 8,
+          }}
           onClick={() => {
             const snap = buildSyncState();
             saveSyncStateToStorage(MANUAL_KEY, snap);
@@ -395,12 +515,33 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
         </button>
 
         <button
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
           onClick={() => {
             clearSyncStateFromStorage();
             setStatus('Saved sync cleared. Reload to start from a blank state.');
           }}
         >
           Clear Saved Sync
+        </button>
+
+        <button
+          type="button"
+          style={{
+            padding: '6px 10px',
+            borderRadius: 6,
+            border: '1px solid #d1d5db',
+            background: '#fff',
+            cursor: 'pointer',
+          }}
+          onClick={() => setShowShortcuts((prev) => !prev)}
+        >
+          {showShortcuts ? 'Hide Shortcuts' : 'Show Shortcuts'}
         </button>
       </div>
       {showShortcuts && (

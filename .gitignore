@@ -27,14 +27,15 @@ yarn-error.log*
 # PowerShell utility scripts (local environment helpers)
 *.ps1
 
-# Local video/media files
-/public/videos/
-/src/assets/videos/
-/assets/videos/
-/videos/
-/*.mp4
-/*.mov
-/*.avi
+# Ignore all video files by default
+*.mp4
+*.mov
+*.avi
+
+# BUT keep the small demo videos in public/videos
+!public/videos/sample01.mp4
+!public/videos/sample02.mp4
+!public/videos/sample03.mp4
 
 # Temporary or generated files
 *.log

@@ -252,12 +252,18 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
 
   const marksCount = marks.filter((m) => typeof m === 'number').length;
   const canSync = marksCount >= 2;
-  const syncTip =
-    marksCount === 0
-      ? 'Set a mark on at least two cameras to enable Start Sync.'
-      : marksCount === 1
-        ? 'Set one more mark on another camera to enable Start Sync.'
-        : '';
+
+  let guidedStatus = '';
+
+  if (status.startsWith('Synced')) {
+    guidedStatus = 'Step 4: Click Play All to review the synchronization.';
+  } else if (canSync) {
+    guidedStatus = 'Step 3: Click Start Sync to align the marked cameras.';
+  } else if (marksCount === 1) {
+    guidedStatus = 'Step 2: Mark one more camera at the same moment to enable syncing.';
+  } else {
+    guidedStatus = 'Step 1: Play the videos and pause them at the same real-world moment.';
+  }
 
   const offsetLabel = (i) => {
     if (marks[masterIndex] == null || marks[i] == null) return '—';
@@ -578,11 +584,11 @@ export default function VideoGrid({ sources = DEFAULT_SOURCES }) {
       )}
 
       <div style={{ fontSize: 13 }}>
-        Status: <strong>{status}</strong> {syncTip && `· ${syncTip}`}{' '}
+        <strong>{guidedStatus}</strong>
         {bestMasterIndex !== masterIndex
-          ? `· (Auto-picked best master: Camera ${bestMasterIndex + 1})`
+          ? ` · (Auto-picked best master: Camera ${bestMasterIndex + 1})`
           : ''}
-        {lastSavedAt ? `· Saved at ${lastSavedAt.toLocaleTimeString()}` : ''}
+        {lastSavedAt ? ` · Saved at ${lastSavedAt.toLocaleTimeString()}` : ''}
       </div>
     </div>
   );
